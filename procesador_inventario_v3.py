@@ -7,6 +7,8 @@
 # ---------------------------------------------------------
 
 import csv
+import logging
+import os
 import re
 
 
@@ -16,6 +18,7 @@ import re
 
 RUTA_ENTRADA = "data/inventario_cd.csv"
 RUTA_SALIDA = "ordenes_compra_urgente_v3.csv"
+RUTA_LOG = "errores.log"
 
 CATEGORIAS_VALIDAS = {
     "Alimentos",
@@ -37,6 +40,68 @@ CAMPOS_ENTEROS = (
 LEAD_TIME_URGENTE = 5
 
 PATRON_ID = re.compile(r"^[A-Z]\d{3}$")
+
+
+# =========================================================
+# CONFIGURACIÓN DE LOGGING
+# =========================================================
+
+def configurar_logging(ruta=RUTA_LOG):
+    """
+    Configura el sistema de registro de eventos en archivo.
+
+    Parámetros:
+        ruta (str): Ruta del archivo de log.
+
+    Retorna:
+        None: La función configura el módulo logging.
+    """
+    carpeta_log = os.path.dirname(ruta)
+
+    if carpeta_log:
+        os.makedirs(carpeta_log, exist_ok=True)
+
+    logging.basicConfig(
+        filename=ruta,
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+        encoding="utf-8",
+        filemode="a",
+        force=True
+    )
+
+    logging.info("Sistema de logging configurado.")
+
+    return None
+
+
+def registrar_errores(errores, nivel="warning"):
+    """
+    Registra una lista de mensajes de validación en errores.log.
+
+    Parámetros:
+        errores (list): Lista de mensajes de error.
+        nivel (str): Nivel de registro a utilizar: warning o error.
+
+    Retorna:
+        int: Cantidad de errores registrados.
+    """
+    for error in errores:
+        if nivel == "error":
+            logging.error(error)
+        else:
+            logging.warning(error)
+
+    return len(errores)
+
+
+
+
+
+
+
+
+
 
 
 # =========================================================
@@ -261,13 +326,81 @@ def leer_csv(ruta=RUTA_ENTRADA, encoding="utf-8", separador=","):
         separador (str): Carácter que separa las columnas del CSV.
 
     Retorna:
-        list: Lista de diccionarios, uno por cada fila del archivo.
+        list: Lista de diccionarios, uno por cada fila válida del archivo.
+
+    Excepciones:
+        FileNotFoundError: Si el archivo de entrada no existe.
+        PermissionError: Si no existen permisos para leer el archivo.
+        ValueError: Si el archivo no tiene encabezados válidos.
+        TypeError: Si se detecta una fila de estructura inválida.
     """
-    with open(ruta, mode="r", encoding=encoding, newline="") as archivo:
-        lector = csv.DictReader(archivo, delimiter=separador)
-        registros = list(lector)
+    registros = []
+
+    try:
+        with open(
+            ruta,
+            mode="r",
+            encoding=encoding,
+            newline=""
+        ) as archivo:
+            lector = csv.DictReader(archivo, delimiter=separador)
+
+            if lector.fieldnames is None:
+                raise ValueError(
+                    "El archivo CSV no contiene encabezados válidos."
+                )
+
+            for numero_linea, fila in enumerate(lector, start=2):
+                try:
+                    if fila is None:
+                        raise TypeError(
+                            "La fila leída no tiene una estructura válida."
+                        )
+
+                    registros.append(fila)
+
+                except (ValueError, TypeError) as error:
+                    logging.warning(
+                        f"Fila {numero_linea} descartada durante lectura | "
+                        f"Error: {error}"
+                    )
+
+    except FileNotFoundError:
+        logging.error(
+            f"Archivo de entrada no encontrado | ruta={ruta}"
+        )
+        raise
+
+    except PermissionError:
+        logging.error(
+            f"Permiso denegado al leer archivo de entrada | ruta={ruta}"
+        )
+        raise
+
+    except (ValueError, TypeError) as error:
+        logging.error(
+            f"Error de estructura o tipo durante lectura | "
+            f"ruta={ruta} | Error: {error}"
+        )
+        raise
+
+    finally:
+        logging.info(
+            f"Finaliza intento de lectura del archivo | ruta={ruta}"
+        )
+
+    logging.info(
+        f"Lectura exitosa | ruta={ruta} | registros_leidos={len(registros)}"
+    )
 
     return registros
+
+
+
+
+
+
+
 
 
 def escribir_csv_salida(
@@ -285,6 +418,11 @@ def escribir_csv_salida(
 
     Retorna:
         int: Cantidad de órdenes escritas en el archivo de salida.
+
+    Excepciones:
+        PermissionError: Si no existen permisos para escribir el archivo.
+        ValueError: Si los datos de salida no son válidos.
+        TypeError: Si registros no tiene la estructura esperada.
     """
     if registros is None:
         registros = []
@@ -298,34 +436,73 @@ def escribir_csv_salida(
         "dias_estimados_reposicion"
     ]
 
-    with open(
-        ruta,
-        mode="w",
-        encoding=encoding,
-        newline=""
-    ) as archivo_salida:
-        escritor = csv.DictWriter(
-            archivo_salida,
-            fieldnames=columnas_salida
+    try:
+        with open(
+            ruta,
+            mode="w",
+            encoding=encoding,
+            newline=""
+        ) as archivo_salida:
+            escritor = csv.DictWriter(
+                archivo_salida,
+                fieldnames=columnas_salida
+            )
+
+            escritor.writeheader()
+
+            for registro in registros:
+                try:
+                    fila_salida = {
+                        "id_producto": registro["id_producto"],
+                        "producto": registro["producto"],
+                        "cantidad_a_reponer": (
+                            registro["cantidad_a_reponer"]
+                        ),
+                        "costo_total_reposicion": (
+                            registro["costo_total_reposicion"]
+                        ),
+                        "proveedor": registro["proveedor"],
+                        "dias_estimados_reposicion": (
+                            registro["lead_time_dias"]
+                        )
+                    }
+
+                    escritor.writerow(fila_salida)
+
+                except KeyError as error:
+                    logging.warning(
+                        f"Registro omitido al generar salida | "
+                        f"campo_faltante={error}"
+                    )
+
+                except (ValueError, TypeError) as error:
+                    logging.warning(
+                        f"Registro omitido al generar salida | "
+                        f"Error: {error}"
+                    )
+
+    except PermissionError:
+        logging.error(
+            f"Permiso denegado al escribir archivo de salida | ruta={ruta}"
+        )
+        raise
+
+    except (ValueError, TypeError) as error:
+        logging.error(
+            f"Error al generar archivo de salida | "
+            f"ruta={ruta} | Error: {error}"
+        )
+        raise
+
+    finally:
+        logging.info(
+            f"Finaliza intento de escritura del archivo | ruta={ruta}"
         )
 
-        escritor.writeheader()
-
-        for registro in registros:
-            fila_salida = {
-                "id_producto": registro["id_producto"],
-                "producto": registro["producto"],
-                "cantidad_a_reponer": registro["cantidad_a_reponer"],
-                "costo_total_reposicion": (
-                    registro["costo_total_reposicion"]
-                ),
-                "proveedor": registro["proveedor"],
-                "dias_estimados_reposicion": (
-                    registro["lead_time_dias"]
-                )
-            }
-
-            escritor.writerow(fila_salida)
+    logging.info(
+        f"Archivo de salida generado | ruta={ruta} | "
+        f"ordenes_escritas={len(registros)}"
+    )
 
     return len(registros)
 
@@ -466,85 +643,147 @@ def generar_reporte_consola(resumen):
 # PROGRAMA PRINCIPAL
 # =========================================================
 
+
 def main():
     """
-    Orquesta el flujo completo de lectura, validación, cálculo,
-    generación de salida y presentación del reporte ejecutivo.
+    Orquesta el flujo de lectura, validación, cálculo, generación
+    de salida y reporte ejecutivo.
 
     Parámetros:
         None.
 
     Retorna:
-        dict: Resumen final de la ejecución.
+        dict o None: Resumen final si la ejecución es exitosa.
+        Retorna None si ocurre un error crítico controlado.
     """
-    registros_crudos = leer_csv()
+    configurar_logging()
 
-    registros_validos = []
-    registros_descartados = []
-    registros_urgentes = []
-    errores_totales = []
+    try:
+        logging.info("Inicio de ejecución del procesador de inventario.")
 
-    total_unidades_reponer = 0
-    costo_total_reposicion = 0.0
+        registros_crudos = leer_csv()
 
-    for registro_crudo in registros_crudos:
-        es_valido_tipo, registro_convertido, errores_tipo = (
-            validar_tipos(registro_crudo)
-        )
+        registros_validos = []
+        registros_descartados = []
+        registros_urgentes = []
+        errores_totales = []
 
-        if not es_valido_tipo:
-            registros_descartados.append(registro_crudo)
-            errores_totales.extend(errores_tipo)
-            continue
+        total_unidades_reponer = 0
+        costo_total_reposicion = 0.0
 
-        es_valido_reglas, errores_reglas = (
-            validar_reglas_negocio(registro_convertido)
-        )
-
-        if not es_valido_reglas:
-            registros_descartados.append(registro_convertido)
-            errores_totales.extend(errores_reglas)
-            continue
-
-        registro_calculado = calcular_reposicion(registro_convertido)
-
-        registros_validos.append(registro_calculado)
-
-        if registro_calculado["es_bajo_stock"]:
-            total_unidades_reponer += (
-                registro_calculado["cantidad_a_reponer"]
-            )
-            costo_total_reposicion += (
-                registro_calculado["costo_total_reposicion"]
+        for registro_crudo in registros_crudos:
+            es_valido_tipo, registro_convertido, errores_tipo = (
+                validar_tipos(registro_crudo)
             )
 
-        if registro_calculado["es_extrema_urgencia"]:
-            registros_urgentes.append(registro_calculado)
+            if not es_valido_tipo:
+                registros_descartados.append(registro_crudo)
+                errores_totales.extend(errores_tipo)
+                registrar_errores(errores_tipo)
+                continue
 
-    cantidad_ordenes = escribir_csv_salida(
-        registros=registros_urgentes
-    )
+            es_valido_reglas, errores_reglas = (
+                validar_reglas_negocio(registro_convertido)
+            )
 
-    resumen = crear_resumen(
-        total_leidos=len(registros_crudos),
-        validos=registros_validos,
-        descartados=registros_descartados,
-        urgentes=registros_urgentes,
-        total_unidades_reponer=total_unidades_reponer,
-        costo_total_reposicion=costo_total_reposicion,
-        errores=errores_totales
-    )
+            if not es_valido_reglas:
+                registros_descartados.append(registro_convertido)
+                errores_totales.extend(errores_reglas)
+                registrar_errores(errores_reglas)
+                continue
 
-    generar_reporte_consola(resumen)
+            registro_calculado = calcular_reposicion(registro_convertido)
 
-    print("")
-    print(
-        "Archivo generado: "
-        f"{RUTA_SALIDA} "
-        f"({cantidad_ordenes} órdenes urgentes)."
-    )
+            registros_validos.append(registro_calculado)
 
-    return resumen
+            if registro_calculado["es_bajo_stock"]:
+                total_unidades_reponer += (
+                    registro_calculado["cantidad_a_reponer"]
+                )
+                costo_total_reposicion += (
+                    registro_calculado["costo_total_reposicion"]
+                )
+
+            if registro_calculado["es_extrema_urgencia"]:
+                registros_urgentes.append(registro_calculado)
+
+        cantidad_ordenes = escribir_csv_salida(
+            registros=registros_urgentes
+        )
+
+        resumen = crear_resumen(
+            total_leidos=len(registros_crudos),
+            validos=registros_validos,
+            descartados=registros_descartados,
+            urgentes=registros_urgentes,
+            total_unidades_reponer=total_unidades_reponer,
+            costo_total_reposicion=costo_total_reposicion,
+            errores=errores_totales
+        )
+
+        generar_reporte_consola(resumen)
+
+        print("")
+        print(
+            "Archivo generado: "
+            f"{RUTA_SALIDA} "
+            f"({cantidad_ordenes} órdenes urgentes)."
+        )
+
+        logging.info(
+            f"Ejecución exitosa | validos={len(registros_validos)} | "
+            f"descartados={len(registros_descartados)} | "
+            f"urgentes={len(registros_urgentes)}"
+        )
+
+        return resumen
+
+    except FileNotFoundError:
+        mensaje = (
+            "Error crítico: no se encontró el archivo de entrada. "
+            "Revise la ruta y la disponibilidad del archivo."
+        )
+
+        logging.error(mensaje)
+        print(mensaje)
+
+        return None
+
+    except PermissionError:
+        mensaje = (
+            "Error crítico: no existen permisos para leer o escribir "
+            "uno de los archivos del proceso."
+        )
+
+        logging.error(mensaje)
+        print(mensaje)
+
+        return None
+
+    except (ValueError, TypeError) as error:
+        mensaje = (
+            "Error de datos durante la ejecución. "
+            "Revise el archivo errores.log."
+        )
+
+        logging.error(f"{mensaje} Detalle: {error}")
+        print(mensaje)
+
+        return None
+
+    except Exception as error:
+        mensaje = (
+            "Ocurrió un error inesperado. "
+            "Revise el archivo errores.log."
+        )
+
+        logging.exception(f"{mensaje} Detalle: {error}")
+        print(mensaje)
+
+        return None
+
+    finally:
+        logging.info("Ejecución finalizada.")
 
 
 if __name__ == "__main__":

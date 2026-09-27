@@ -1,0 +1,26 @@
+id_producto,producto,cantidad_a_reponer,costo_total_reposicion,proveedor,dias_estimados_reposicion
+P013,Crema de manos 100 ml,73,116070.0,ProvC,6
+P022,Sardinas en tomate 125 g,141,125490.0,ProvC,6
+P051,Néctares surtidos 1 L,117,127530.0,ProvC,6
+P081,Detergente polvo 1 kg,120,370800.0,ProvC,6
+P082,Vinagre 500 ml,159,93810.0,ProvC,6
+P126,Chocapic 500 g,78,233220.0,ProvC,6
+P137,Chocapic 500 g,99,305910.0,ProvC,6
+P151,Té helado durazno 1.5 L,139,193210.0,ProvC,6
+P161,Miel 500 g,165,528000.0,ProvC,6
+P162,Gel ducha 400 ml,106,242740.0,ProvC,6
+P208,Pan molde blanco,90,134100.0,ProvC,6
+P219,Chocapic 500 g,62,191580.0,ProvC,6
+P270,Bebida energética 250 ml,121,180290.0,ProvC,6
+P274,Manjar 400 g,120,238800.0,ProvC,6
+P276,Chocapic 500 g,84,251160.0,ProvC,6
+P285,Queso gauda laminado 200 g,157,390930.0,ProvC,6
+P287,Chocapic 500 g,63,213570.0,ProvC,6
+P309,Miel 500 g,158,505600.0,ProvC,6
+P310,Pan molde blanco,85,109650.0,ProvC,6
+P352,Café instantáneo 170 g,122,559980.0,ProvC,6
+P379,Bebida jengibre 1 L,170,287300.0,ProvC,6
+P413,Lavalozas 750 ml,76,110200.0,ProvC,6
+P422,Esponjas fibra 3 un,58,45820.0,ProvC,6
+P482,Chocapic 500 g,83,256470.0,ProvC,6
+P494,Jabón líquido manos 500 ml,76,143640.0,ProvC,6
